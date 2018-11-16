@@ -1,0 +1,344 @@
+%\documentstyle[epsf,twocolumn]{jarticle}       %LaTeX2.09仕様
+\documentclass[twocolumn]{jarticle}     %pLaTeX2e仕様
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%  基本 バージョン
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\setlength{\topmargin}{-45pt}
+%\setlength{\oddsidemargin}{0cm} 
+\setlength{\oddsidemargin}{-7.5mm}
+%\setlength{\evensidemargin}{0cm} 
+\setlength{\textheight}{24.1cm}
+%setlength{\textheight}{25cm} 
+\setlength{\textwidth}{17.4cm}
+%\setlength{\textwidth}{172mm} 
+\setlength{\columnsep}{11mm}
+
+\kanjiskip=.07zw plus.5pt minus.5pt
+
+
+%【節がかわるごとに(1.1)(1.2) …(2.1)(2.2)と数式番号をつけるとき】
+%\makeatletter
+%\renewcommand{\theequation}{%
+%\thesection.\arabic{equation}} %\@addtoreset{equation}{section}
+%\makeatother
+
+%\renewcommand{\arraystretch}{0.95} 行間の設定
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage[dvipdfmx]{graphicx}   %pLaTeX2e仕様(要\documentstyle ->\documentclass)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\begin{document}
+
+\twocolumn[
+\noindent
+
+前期研究発表会資料  2018年6月25日(月)
+\hfill
+\ \  M1 寺西 弘樹
+
+\vspace{2mm}
+
+\hrule
+
+\begin{center}
+{\Large \bf Attention モデルを用いた生成型要約}
+\end{center}
+
+
+\hrule
+\vspace{3mm}
+]
+
+% ここから 文章 Start!
+\section{はじめに}
+
+近年，インターネット上にはニュース記事やブログ記事などの文書データが
+溢れ，多くの人々が情報源として利用している．しかしそれらの中には冗長な文章も存在するため，
+簡潔に要約された文章への要求が高まっている．また簡潔にまとめられた要約は元文書を読む際の
+手がかりともなり，情報検索の負荷を軽減できる点で有用である．
+
+ 上記の要求を満たすために様々な文書要約手法が提案されてきた．
+自然言語処理を用いた文書要約には生成型要約と抽出型要約の2種類の方法がある．
+抽出型要約は入力文書に存在する入力文書の代表文や重要文を抽出することで要約し，
+生成型要約は要約元となる文から文章を再構築し，新しい文を生成することで要約する．
+生成型要約は助詞の接続の問題や未知語の問題などがありコンピュータでは難しい処理であり，そのため
+既存研究の多くは抽出型要約に属しているのが現状である．
+特に日本語は表記体系がひらがな，カタカナ，漢字,アルファベットなど多く存在し，
+助詞の接続が複雑なため，生成型要約がより困難とされている．
+
+しかし人間の作る要約文のような自然な要約文を得るためには生成型要約が必要不可欠であり，
+そのため生成型要約に関するニューラルネットワークを用いた研究が近年盛んに行われている．
+実際に機械翻訳手法として考案された Attention モデルを
+生成型要約に用いる Attention based Summarization(ABS) という手法が提案されており，
+短文要約やタイトル生成といったタスクにおいて従来の手法を上回る性能が
+報告されている．また要約は複数の文を参照して行われるものであるという考えのもと，
+ABSを拡張し，複数文をエンコードし，
+統合することで複数文のエンコードをするマルチ Attention モデルも提案されている．
+
+ 本研究では ABS モデルと マルチ Attention モデルを
+用いてニュース記事を要約し，それぞれのモデルの性能の比較をすることを目的とする．
+
+\section{要素技術}
+
+\subsection{Feed Forward Neural Network による言語モデル}
+
+FFNN による言語モデルは，Bengio らによって考案された言語モデルである．
+このモデルはある時刻\textit{t}以前の単語を n-gram 単位で単語列として
+入力し，次の単語の予測をするニューラルネットワークモデルである\cite{FFNN}．
+FFNN による言語モデルの式を以下に示す．
+
+\begin{equation}
+\tilde{y_c} = {\rm cat}(E y_{t-c+1},...,E y_t)
+\end{equation}
+\begin{equation}
+h = {\rm tanh}(U \tilde{y_c})
+\label{eq:h}
+\end{equation}
+
+$ y_{t-c+1} $,...,$ y_t $は生成された時刻\textit{t}以前の\textit{c}個の単語を表す．
+{\it E}は生成された単語$ y_{t-c+1} $,...,$ y_t $を実数値ベクトルに変換するエンベディング行列で
+{\it U}は重みパラメータである．
+$ \tilde{y_c} $は$ y_{t-c+1} $,...,$ y_t $をエンベディングしたベクトルを連結したベクトルを表し，
+{\it h}は FFNN の隠れ層のベクトルを表す．
+cat関数はベクトルを連結する関数を表す．
+
+\subsection{Attention モデル}
+ 機械翻訳などのタスクで考案された Encoder-Decoder モデルは
+可変長の文を固定長のベクトルにエンコードするため，
+長い入力文になるほど隠れ層のノード数が不足し，学習が難しくなる問題がある．
+そこで Bahdanau らは2015年，エンコーダ側で入力文の各単語の荷重を決定して
+エンコードするべき場所を制御する Attention モデルを提案した \cite{Attention}.
+
+Attention モデルでは入力文の各単語 $ x_i $ に対する荷重$ \alpha_t $ を計算することで，
+エンコーダで出力される中間表現 $ c_t $ を得る．
+$ \alpha_t $ はエンコーダで出力されるベクトル$ h_i $とデコーダから出力されるベクトル$ h_t $
+の内積を正規化することによって得られる．
+
+\begin{eqnarray}
+\alpha_t(i) &=& \frac{\exp((\overline{h_i},h_t))}{\sum_{j=1}^n \exp((\overline{h_j},h_t))} \\
+\label{eq:ct}
+c_t &=& \sum_{i=1}^n \alpha_t(i)\overline{h_i}
+\end{eqnarray}
+
+\subsection{Attention based Summarization モデル}
+ Rush らは2015年，機械翻訳モデルである Attention モデルをもとに，文から短い文への生成型要約
+を行う Attention Based Summarization（ABS）モデルを提案した\cite{ABS}．
+このモデルは Attention モデルの持つ単語に荷重をかけながらエンコードするという特徴を利用することで，
+要約に必要な単語に荷重をかけながら，生成的に文を要約することを可能とした．
+Rush らはこのモデルでニュース記事からタイトル生成をする実験により，従来の手法より高い精度を得た．
+図\ref{fig:ABS-model}に ABS モデルを示す．
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=70mm]{rush-abs.png}
+\caption{ABS モデル(文献\cite{ABS}をもとに作成)}
+\label{fig:ABS-model}
+\end{figure}
+
+ABS モデルはエンコーダ部分とデコーダ部分に分けられる．
+エンコーダ部分は2.2節で述べた Attention モデルが使用され，
+デコーダ部分では2.1節で述べた FFNN による言語モデルが使用されている．
+
+図\ref{fig:ABS-model}において{\it X}は元文を表し，$ {\it Y_c} $は生成した{\it c}個の単語を表す．
+{\it E}，{\it F}，{\it G}は元文，生成文の単語を 1-hot ベクトルから実数値ベクトルに変換するエンベディング
+行列であり{\it W}，{\it V}は重みパラメータである．
+また{\it p}は単語の荷重，$ \overline{X} $ は $ \tilde{X} $ をスムージングした行列である．
+
+それぞれのモデル式は以下の通りである．{\it q}はスムージングウィンドウサイズの大きさを，
+cat 関数はベクトルを連結する関数を表す．
+
+\begin{equation}
+{\rm encode}(X , Y_c) = p^{\mathrm{T}} \overline{X}
+\end{equation}
+\begin{equation}
+p \propto \exp(\tilde{X} P \tilde{Y}_c)
+\end{equation}
+\begin{equation}
+\overline{x}_i = \frac{\sum_{j=i-q}^{i+q} \tilde{x}_j}{q} \in \overline{X}
+\end{equation}
+\begin{equation}
+\tilde{x}_i = F x_i \in \tilde{X}
+\end{equation}
+\begin{equation}
+\tilde{Y}_c = {\rm cat}(G y_{i-c+1},...,G y_i)
+\end{equation}
+\begin{equation}
+{\rm P}(y_{i+1} | X , Y_c) \propto \exp(V h + W {\rm encode}(X , Y_c))
+\end{equation}
+
+ABSモデルは入力が一文となっており，複数文を入力とすることは不可能である．
+
+\subsection{マルチ Attention モデル}
+マルチ Attention モデルについて述べる．
+マルチ Attention モデルでは ABS モデルを用いて元文書に含まれる各文をエンコードし，その
+エンコード結果を統合することで複数文のエンコードをする．
+マルチ Attention モデルとして，
+平均マルチ Attention モデルとディープマルチ Attention モデルが提案されている\cite{deep_ABS}．
+ここでは平均マルチ Attention モデルについて説明する．
+平均マルチ Attention モデルは各文の Attention モデルのエンコード結果を平均したものをエンコードの中間表現とする．
+平均マルチ Attention モデルでは各文が同等に反映されたものとなり，文間に荷重をかけることができない．
+図\ref{fig:ABS2-model}に 平均マルチ Attention モデルのエンコーダ部を示す．
+デコーダ部は ABS モデルと同様である．
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=70mm]{deepABS.png}
+\caption{平均マルチ Attention モデルの Encoder 部(文献\cite{deep_ABS}をもとに作成)}
+\label{fig:ABS2-model}
+\end{figure}
+
+また平均マルチ Attention モデルのエンコーダの中間表現のベクトルは以下の通りである．
+
+\begin{equation}
+{\rm encode_{average}}(X , Y_c) = \frac{\sum_{i=1}^n {\rm encode}(X_i , Y_c)}{n}
+\end{equation}
+
+\section{実験}
+
+\subsection{実験1}
+\subsubsection{実験方法}
+ Attention モデルと 平均マルチ Attention モデルを用いてニュース記事の生成型要約をし，モデルの性能の比較をした．
+
+ 初めにデータセットについて説明する．
+livedoor ニュース\footnote{livedoor ニュース http:\slash\slash{}news.livedoor.com\slash{} (2018年6月10日アクセス)}から
+国内，海外に関するニュース記事とその記事に対する要約文のセットを人手で収集し，学習用データとして用いた．
+livedoor ニュースでは，ニュース記事とそれに対する人手による3文の要約文が掲載されている．
+収集した2477件のニュース記事からランダムに選んだ2400件を
+訓練データ，77件をテストデータとした．
+
+ ABS モデルでは入力文 $ X $ としてニュース記事の最初の1文(ヘッドライン)を用い，それに対する正解要約文 $ Y $ として
+人手による要約文の最初の1文を用いた．
+マルチ Attention モデルでは入力文 $ X $ としてニュース記事全文を用い，それに対する正解要約文 $ Y $ として
+ ABS モデル同様に人手による要約文の最初の1文を用いた．
+
+なお形態素解析には Mecabを用い，数字に関してはすべて Num トークンに置換した．
+また出現頻度1以下の単語を未知語として扱い，「***」トークンに置換した．
+未知語を取り除いた総語彙数は36401語であった．
+モデルは chainer フレームワークで実装した．モデルのパラメータは表1の通りである．
+
+ 最後に文章生成方法と評価方法について説明する．
+実験では出力される要約文に対する負の対数尤度を最小化するように学習をしたため，要約文としては
+最も生成される確率の高い文章を選ぶ必要がある．これは語彙数 $ V $ の状態をもった最適経路問題を解くという問題に帰着されるが，
+これは NP 困難であり計算時間内に解くことが不可能である．そのため，枝刈りをしながら探索するために
+本研究では探索アルゴリズムとしてビームサーチを用いた．
+ビームサイズは2に設定した．
+
+評価方法として，システム要約（生成文）と参照要約（正解文）間において n-gram 単位でどれほど一致したかを
+表す RUOGE-N \cite{rouge}という指標を用いた．
+今回は ROUGE-1，ROUGE-2 を用いた．
+ROUGE-N の計算式を以下に示す．
+
+\begin{eqnarray}
+{\rm ROUGE}\mathchar`-{\rm N}(C,R) = \frac{\sum_{e \in {\rm n}\mathchar`-{\rm gram}(C)} {\rm Count_{clip}} (e)}{\sum_{e \in {\rm n}\mathchar`-{\rm gram}(R)} {\rm Count}(e)}
+\end{eqnarray}
+
+n-gram({\it C})は，システム要約に含まれる n-gram，n-gram({\it R})は，参照要約に含まれる n-gram 集合を表す．
+Count({\it e})は，ある n-gram の出現頻度を数える関数であり，
+$ {\rm Count_{clip}} $({\it e})は，システム要約に
+おける n-gram の出現頻度 Count($ e \in {\rm n}\mathchar`-{\rm gram}(C) $)と
+参照要約における n-gram の出現頻度 Count($ e \in {\rm n}\mathchar`-{\rm gram}(R) $)の小さい方の値を採用する．
+
+\begin{table}[t]
+\caption{ABS，平均マルチ Attention モデルにおけるパラメータ}
+\label{tb:Attention-p}
+\centering
+\begin{tabular}{|c|c|} \hline
+パラメータ&値\\ \hline
+エンベディングサイズ&100\\ \hline
+隠れ層サイズ&100\\ \hline
+FFNNに入れる直前単語数&5\\ \hline
+スムージングサイズ&2\\ \hline
+optimizer&Adam(alpha=0.001)\\ \hline
+epoch数&200\\ \hline
+バッチサイズ&50\\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection{実験結果}
+
+初めに ヘッドライン抽出，ABS モデル，平均マルチ Attention モデルに対するテストデータ77件のROUGE値を表2に示す．
+
+\begin{table}[t]
+\caption{ROUGE 値}
+\label{tb:aaaaa}
+\centering
+\begin{tabular}{|c|c|c|} \hline
+&ROUGE-1&ROUGE-2\\ \hline
+ヘッドライン抽出&0.5378&0.3114\\ \hline
+ABS モデル&0.3168&0.0724\\ \hline
+マルチ Attention モデル&0.2641&0.0509\\ \hline
+\end{tabular}
+\end{table}
+
+また実際の生成文例を以下に示す．なおABSモデルの入力文は記事の一文目，
+マルチ Attention モデルの入力文は記事の全文である．
+\begin{description}
+\item[記事例]平昌オリンピックの警備員が、ノロウイルスに集団感染した疑いが
+あることがわかった。韓国の保健福祉省によると、オリンピックの警備員が下痢などの症状を訴え、
+Num日までに、約Num人にノロウイルスに感染した疑いがもたれている。水道水が原因とみられ、同じ宿舎の、
+約Num人が業務から外れて待機している。
+
+\item[正解文]平昌五輪の警備員約Num人がノロウイルスに感染した疑いがある。
+
+\item[ヘッドライン抽出]平昌オリンピックの警備員が、ノロウイルスに集団感染した疑いが
+あることがわかった。
+
+\item[出力文 ABS]平昌五輪の警備員らがノロウイルスに集団感染した問題。
+
+\item[出力文 平均マルチ]Num日、埼玉県の男が流出した。
+\end{description}
+
+ROUGE値の結果はヘッドライン抽出が最も高かった．
+これは生成型要約の学習が十分でないこともあるが，
+ニュース記事の要約においてはヘッドラインが用いられることが多いので，
+ROUGE値が高いのは妥当といえる．
+しかし，ヘッドラインに含まれない情報が有効となる場合もあるので，
+汎用性を考ると，生成型要約のほうが重要になると考える．
+
+生成型要約について比べると，
+表2より，ABSモデルのほうがマルチ Attention モデルよりROUGE値が高いことが分かる．
+また生成される要約文の内容についても，ABS モデルに比べてうまく生成できていなかった．
+マルチ Attention モデルでは文章は生成できているが，内容や意味的に正しい要約がとれていなかった．
+全文を入力する場合，冗長性があがるために文生成の精度が落ちたためと考えられる．
+また全文を入力した際は，訓練データ数が少ないこともあり学習が十分にされなかった
+ことも精度低下の要因と考えられる．
+また，ニュース記事の要約は最初の文が用いられることが多い．
+平均マルチ Attention モデルが文間の荷重をかけないモデルであり，
+すべての文を同等に扱うこのモデルの特性が，精度低下の一因とも考えられる．
+
+今後，入力文を全文ではなく最初の3文程度を入力としたり，
+文間に荷重をかけたりすることで平均マルチ Attention モデルよりROUGEの精度が上がると予想する．
+
+\section{まとめと今後の課題}
+
+ABSモデルと平均マルチ Attention モデルで文章要約をし，両者のモデルの性能の比較をした．
+全文を同等に扱うマルチ平均 Attention モデルでは単一文だけを利用する ABS モデルより
+精度が落ちることが分かった．
+しかし要約は複数の文を参照して行われるものであるためにマルチ Attention モデルを
+用いた要約文生成が望ましい．
+平均マルチ Attention モデルの精度向上のために，
+ニュース記事の要約は最初の文が用いられることが多いことを考慮して
+入力文数の制限や，文間の荷重付与が今後必要になると考えられる．
+それ以外の今後の課題としては，文間の荷重をかけるディープマルチAttentionモデルの実装，
+ひとつの記事から複数の要約文を生成する手法の考案などが挙げられる．
+
+現在，複数の要約文の生成法として以下の手法を考えている．
+
+\begin{itemize}
+
+\item 記事を単純に3分割し，それぞれの分割した複数文章を異なる3つのモデルを用いて学習させ，
+それぞれのモデルから3つの要約文を生成する手法
+
+\item 抽出型要約(LexRank法など)で代表文を3文取り出して，その3文から生成型要約を利用して
+要約文を生成する，抽出型要約と生成型要約を組み合わせた手法
+
+\end{itemize}
+
+\bibliographystyle{junsrt}
+\bibliography{index_ja}
+\end{document}
