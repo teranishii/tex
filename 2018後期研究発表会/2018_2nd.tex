@@ -1,0 +1,357 @@
+%\documentstyle[epsf,twocolumn]{jarticle}       %LaTeX2.09仕様
+\documentclass[twocolumn]{jarticle}     %pLaTeX2e仕様
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%%  基本 バージョン
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\setlength{\topmargin}{-45pt}
+%\setlength{\oddsidemargin}{0cm} 
+\setlength{\oddsidemargin}{-7.5mm}
+%\setlength{\evensidemargin}{0cm} 
+\setlength{\textheight}{24.1cm}
+%setlength{\textheight}{25cm} 
+\setlength{\textwidth}{17.4cm}
+%\setlength{\textwidth}{172mm} 
+\setlength{\columnsep}{11mm}
+
+\kanjiskip=.07zw plus.5pt minus.5pt
+
+
+%【節がかわるごとに(1.1)(1.2) …(2.1)(2.2)と数式番号をつけるとき】
+%\makeatletter
+%\renewcommand{\theequation}{%
+%\thesection.\arabic{equation}} %\@addtoreset{equation}{section}
+%\makeatother
+
+%\renewcommand{\arraystretch}{0.95} 行間の設定
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage[dvipdfmx]{graphicx}   %pLaTeX2e仕様(要\documentstyle ->\documentclass)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\begin{document}
+
+\twocolumn[
+\noindent
+
+平成30年11月5日(月) 後期研究発表会資料
+\hfill
+\ \  M1 寺西 弘樹
+
+\vspace{2mm}
+
+\hrule
+
+\begin{center}
+{\Large \bf Gated Convolutional Neural Network を用いた生成モデルの提案}
+\end{center}
+
+\hrule
+\vspace{3mm}
+]
+
+% ここから 文章 Start!
+\section{はじめに}
+
+タイトルは文書を簡潔に表したもので，元文書の内容理解を容易にする．
+優れたタイトルは多くの人に元文書を読む機会を与えるものであり，そのようなタイトル生成は重要である．
+またインターネットの普及によりタイトル生成の需要は高まっている．
+しかしインターネット上のデータは指数関数的に増加しており，
+人手によるタイトル生成はコストが非常にかかるようになってきている．
+そこで，近年この問題点を解決する文書要約に関する研究が盛んに行われている．
+そのなかでもニューラルネットワークを用いた手法が注目を集めており，
+機械翻訳や文書要約などで高い精度が報告されている．
+
+本研究では，入力単語に荷重をかけながら文章を生成していく Attention モデルに
+ Gated convolutional neural network (GCNN) を用いたタイトル生成モデルを提案する．
+GCNN を用いることで，n-gram による単語間の特徴が得られるようにした．
+また GCNN の組み込みと GCNN の多層スタックを用いることで，Attention に用いる単語を削減するような GCNN 組み込み
+多層スタックモデルを提案する．
+
+GCNN の組み込みにより，n-gram 間の単語の特徴が得られたかどうかをABSモデルと ROUGE 値で比較し，
+提案モデルの性能を評価する．
+
+\section{要素技術}
+
+\subsection{Attention モデル}
+ 機械翻訳などのタスクで考案された Encoder-Decoder モデルは
+可変長の文を固定長のベクトルにエンコードするため，
+長い入力文になるほど隠れ層のノード数が不足し，学習が難しくなる問題がある．
+そこで Bahdanau らは2015年，エンコーダ側で入力文の各単語の荷重を決定して
+エンコードするべき場所を制御する Attention モデルを提案した \cite{Attention}.
+
+Attention モデルでは入力文の各単語 $ x_i $ に対する荷重$ \alpha_t $ を計算することで，
+エンコーダで出力される中間表現 $ c_t $ を得る．
+$ \alpha_t $ はエンコーダで出力されるベクトル$ h_i $とデコーダから出力されるベクトル$ h_t $
+の内積を正規化することによって得られる．
+
+\begin{eqnarray}
+\alpha_t(i) &=& \frac{\exp((\overline{h_i},h_t))}{\sum_{j=1}^n \exp((\overline{h_j},h_t))} \\
+\label{eq:ct}
+c_t &=& \sum_{i=1}^n \alpha_t(i)\overline{h_i}
+\end{eqnarray}
+
+\subsection{Attention based Summarization モデル}
+ Rush らは2015年，機械翻訳モデルである Attention モデルをもとに，文から短い文への生成型要約
+を行う Attention Based Summarization（ABS）モデルを提案した\cite{ABS}．
+このモデルは Attention モデルの持つ単語に荷重をかけながらエンコードするという特徴を利用することで，
+要約に必要な単語に荷重をかけながら，生成的に文を要約することを可能とした．
+Rush らはこのモデルでニュース記事からタイトル生成をする実験により，従来の手法より高い精度を得た．
+図\ref{fig:ABS-model}に ABS モデルを示す．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=70mm]{rush-abs.png}
+\caption{ABS モデル(文献\cite{ABS}をもとに作成)}
+\label{fig:ABS-model}
+\end{figure}
+
+ABS モデルはエンコーダ部分とデコーダ部分に分けられる．
+エンコーダ部分は 2.1 節で述べた Attention モデルが使用され，
+デコーダ部分には言語モデルが用いられる．
+
+図\ref{fig:ABS-model}において{\it X}は元文を表し，$ {\it Y_c} $は生成した{\it c}個の単語を表す．
+{\it E}，{\it F}，{\it G}は元文，生成文の単語を 1-hot ベクトルから実数値ベクトルに変換するエンベディング
+行列であり{\it W}，{\it V}は重みパラメータである．
+また{\it p}は単語の荷重，$ \overline{X} $ は $ \tilde{X} $ をスムージングした行列である．
+
+それぞれのモデル式は以下の通りである．{\it q}はスムージングウィンドウサイズの大きさを，
+cat 関数はベクトルを連結する関数を表す．
+
+\begin{equation}
+{\rm encode}(X , Y_c) = p^{\mathrm{T}} \overline{X}
+\end{equation}
+\begin{equation}
+p \propto \exp(\tilde{X} P \tilde{Y}_c)
+\end{equation}
+\begin{equation}
+\overline{x}_i = \frac{\sum_{j=i-q}^{i+q} \tilde{x}_j}{q} \in \overline{X}
+\end{equation}
+\begin{equation}
+\tilde{x}_i = F x_i \in \tilde{X}
+\end{equation}
+\begin{equation}
+\tilde{Y}_c = {\rm cat}(G y_{i-c+1},...,G y_i)
+\end{equation}
+\begin{equation}
+{\rm P}(y_{i+1} | X , Y_c) \propto \exp(V h + W {\rm encode}(X , Y_c))
+\end{equation}
+
+\subsection{Gated Convolutional Neural Network}
+
+Gated Convolutional Neural Network (GCNN) は畳み込み層，Gated Linear Unit (GLU) 層のブロックを持つモデルであり，
+ゲート構造により，有用な情報の取捨選択が出来る\cite{GCNN}．
+畳み込み層で長期依存を捉え，GLU 層で上層に送る情報を制御する構造になっている．
+最終的にブロックの入力から出力を残差接続する．
+畳み込み層のカーネルサイズ $k$ に応じて入力位置 $k$ 個分の情報を集約できる．
+
+\section{提案手法}
+
+ABS モデルはエンコーダ側で単語間における特徴をとる際に
+単純なスムージングのみを用いており，文生成の際に単語のつながりを
+十分に考慮できていないモデルである．
+そこで本実験では，エンコーダ側に GCNN を用いることで単語間のつながりを考慮した n-gram 特徴量を
+得られるモデルを提案する．
+また GCNN を用いることで Attention の計算に用いるベクトルを削減することができる．
+
+本提案モデルでは新たに 2 つのパラメータ $kernel\_width$，$stack\_size$ を導入する．
+パラメータ $kernel\_width$ は何単語間の特徴を取るかを選択するパラメータで，
+パラメータ $stack\_size$ は GCNN を何層積むかを選択するパラメータである．
+
+この2つのパラメータにより，Attention に用いる単語数を削減できる．
+削減単語数は以下の式で表される．
+
+\begin{equation}
+(kernel\_width - 1) \times stack\_size
+\end{equation}
+
+一例として図 \ref{fig:teiann} に $kernel\_width = 2$，$stack\_size = 1$ におけるモデルのエンコーダ部を示す．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=80mm]{en.png}
+\caption{GCNN の内部構造}
+\label{fig:teiann}
+\end{figure}
+
+\section{実験}
+
+\subsection{実験1}
+\subsubsection{実験方法}
+提案モデルでパラメータ $kernel\_width$，$stack\_size$ を変えながらタイトル生成をし，ABSモデルと比較することで
+性能を評価した．
+
+初めにデータセットについて説明する．
+毎日新聞データセット\footnote{http:\slash\slash{}www.nichigai.co.jp\slash{}sales\slash{}mainichi\slash{}mainichi-data.html}の
+2008 年から 2012 年までのデータのうち，社会，国際，経済に関するニュース記事を用いた．
+このうち 17000 件を学習データに，100 件をテストデータとして扱った．
+提案モデルにおいてエンコーダ側に用いる入力文としてニュース記事の最初の1文(ヘッドライン)を用い，
+それに対してデコーダ側の出力文としてニュース記事のタイトルを用いた．
+ヘッドラインからタイトルを生成するように学習し，
+Validation 誤差が最小となった時点で学習を終了した．
+
+なお形態素解析には Mecabを用い，数字に関してはすべて Num トークンに置換した．
+語彙数 20000 になるように単語の頻出数が少ないものから unk トークンに置換し，未知語として扱った．
+モデルは chainer フレームワークで実装した．モデルのパラメータは表\ref{tb:attention-p}の通りである．
+
+\begin{table}[t]
+\caption{提案モデルにおけるパラメータ}
+\label{tb:attention-p}
+\centering
+\begin{tabular}{|c|c|} \hline
+パラメータ&値\\ \hline
+エンベディングサイズ&200\\ \hline
+隠れ層サイズ&200\\ \hline
+$kernel\_width$&2～8\\ \hline
+$stack\_size$&1～8\\ \hline
+optimizer&Adam(alpha=0.001)\\ \hline
+バッチサイズ&100\\ \hline
+\end{tabular}
+\end{table}
+
+ 最後に文章生成方法と評価方法について説明する．
+実験では出力される要約文に対する負の対数尤度を最小化するように学習をしたため，要約文としては
+最も生成される確率の高い文章を選ぶ必要がある．これは語彙数 $ V $ の状態をもった最適経路問題を解くという問題に帰着されるが，
+これは NP 困難であり計算時間内に解くことが不可能である．そのため，枝刈りをしながら探索するために
+本研究では探索アルゴリズムとしてビームサーチを用いた．
+ビームサイズは 2 に設定した．
+
+評価方法として，システム要約（生成文）と参照要約（正解文）間において n-gram 単位でどれほど一致したかを
+表す ROUGE \cite{rouge}という指標を用いた．そのうち，ROUGE-N,ROUGE-S,ROUGE-L を用いた．
+今回最も着目した評価である ROUGE-N の計算式を以下に示す．
+
+\begin{eqnarray}
+{\rm ROUGE}\mathchar`-{\rm N}(C,R) = \frac{\sum_{e \in {\rm n}\mathchar`-{\rm gram}(C)} {\rm Count_{clip}} (e)}{\sum_{e \in {\rm n}\mathchar`-{\rm gram}(R)} {\rm Count}(e)}
+\end{eqnarray}
+
+n-gram({\it C})は，システム要約に含まれる n-gram，n-gram({\it R})は，参照要約に含まれる n-gram 集合を表す．
+Count({\it e})は，ある n-gram の出現頻度を数える関数であり，
+$ {\rm Count_{clip}} $({\it e})は，システム要約に
+おける n-gram の出現頻度 Count($ e \in {\rm n}\mathchar`-{\rm gram}(C) $)と
+参照要約における n-gram の出現頻度 Count($ e \in {\rm n}\mathchar`-{\rm gram}(R) $)の小さい方の値を採用する．
+
+\subsubsection{実験結果}
+
+初めに提案モデルに対するパラメータを変えた際のテストデータ 100 件の ROUGE 値を表 \ref{tb:ker} に示す．
+
+また実際の生成タイトル例を表 \ref{tb:title} に示す．
+
+表 \ref{tb:ker} の結果から提案モデルにおいて $kernel\_width$ が 2,3 のとき，ABSモデルと比較して ROUGE-1 については
+差はあまり見られないが，ROUGE-2,3 の値は高くなっていることがわかる．
+これは GCNN によって入力単語のまとまりの特徴量がとれたためと考えられる．
+bigram や trigram が一般に使われることを考えると妥当な結果といえる．
+
+また stack を積むと精度が悪くなることが見て取れる．
+これは stack を積むことでネットワークが複雑化し学習がうまくいかないことが原因と考えられる．
+
+\begin{table}[t]
+\caption{t検定}
+\label{tb:t}
+\centering
+\begin{tabular}{|c|c|c|} \hline
+&t 値&p 値\\ \hline
+ROUGE-1&0.5454&0.5454\\ \hline
+ROUGE-2&0.5454&0.5454\\ \hline
+ROUGE-3&0.5454&0.5454\\ \hline
+\end{tabular}
+\end{table}
+
+
+帰無仮説を「」と定義すると
+よってp値が0.05を下回ったので
+95\%信頼区間で有意差ありと判定された．
+
+生成型要約について比べると，
+表2より，ABSモデルのほうがマルチ Attention モデルよりROUGE値が高いことが分かる．
+また生成される要約文の内容についても，ABS モデルに比べてうまく生成できていなかった．
+マルチ Attention モデルでは文章は生成できているが，内容や意味的に正しい要約がとれていなかった．
+全文を入力する場合，冗長性があがるために文生成の精度が落ちたためと考えられる．
+また全文を入力した際は，訓練データ数が少ないこともあり学習が十分にされなかった
+ことも精度低下の要因と考えられる．
+また，ニュース記事の要約は最初の文が用いられることが多い．
+平均マルチ Attention モデルが文間の荷重をかけないモデルであり，
+すべての文を同等に扱うこのモデルの特性が，精度低下の一因とも考えられる．
+
+今後，入力文を全文ではなく最初の3文程度を入力としたり，
+文間に荷重をかけたりすることで平均マルチ Attention モデルよりROUGEの精度が上がると予想する．
+
+\begin{table*}[t]
+\caption{パラメータを変化させた際の ROUGE 値}
+\label{tb:ker}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|} \hline
+&ROUGE-1&ROUGE-2&ROUGE-3&ROUGE-S&ROUGE-L\\ \hline
+ABS モデル&0.3127&0.0918&0.0366&0.0962&0.2584\\ \hline\hline
+$kernel\_width=2$&0.3168&0.1102&0.0468&0.0992&0.2612\\ \hline
+$kernel\_width=3$&0.3042&0.1099&0.0521&0.1013&0.2608\\ \hline
+$kernel\_width=4$&0.2953&0.0951&0.0422&0.0946&0.2561\\ \hline
+$kernel\_width=8$&0.2598&0.0732&0.0268&0.0748&0.2250\\ \hline\hline
+$stack\_size=1$&0.3168&0.1102&0.0468&0.0992&0.2612\\ \hline
+$stack\_size=2$&0.2778&0.0736&0.0274&0.0797&0.2334\\ \hline
+$stack\_size=3$&0.2696&0.0761&0.0347&0.0785&0.2268\\ \hline
+$stack\_size=8$&0.2174&0.0384&0.0114&0.0448&0.1814\\ \hline
+\end{tabular}
+\end{table*}
+
+
+\begin{table*}[t]
+\caption{タイトル生成例}
+\label{tb:title}
+\centering
+\begin{tabular}{|c|c|} \hline
+入力文&
+\begin{tabular}{c}
+兵庫県警川西署はnum日、同署警務課の男性巡査部長\\
+（num）が、月末に退職する予定の署員num人から\\
+預かっていた警察手帳num冊を紛失したと発表した。
+\end{tabular}\\ \hline
+正解文&
+\begin{tabular}{c}
+巡査部長が警察手帳をnum冊紛失－－兵庫県警川西署
+\end{tabular}\\ \hline\hline
+ABSモデル&
+\begin{tabular}{c}
+num冊の巡査、情報入り紛失
+\end{tabular}\\ \hline
+提案モデル($kernel\_size=2$,$stack\_size=1$)&
+\begin{tabular}{c}
+兵庫県警巡査長、男性num人を紛失－－兵庫県警
+\end{tabular}\\ \hline
+提案モデル($kernel\_size=2$,$stack\_size=8$)&
+\begin{tabular}{c}
+num歳の女性、num人を書類送検－－有償運送
+\end{tabular}\\ \hline
+\end{tabular}
+\end{table*}
+
+\section{まとめと今後の課題}
+
+ABSモデルと平均マルチ Attention モデルで文章要約をし，両者のモデルの性能の比較をした．
+全文を同等に扱うマルチ平均 Attention モデルでは単一文だけを利用する ABS モデルより
+精度が落ちることが分かった．
+しかし要約は複数の文を参照して行われるものであるためにマルチ Attention モデルを
+用いた要約文生成が望ましい．
+平均マルチ Attention モデルの精度向上のために，
+ニュース記事の要約は最初の文が用いられることが多いことを考慮して
+入力文数の制限や，文間の荷重付与が今後必要になると考えられる．
+それ以外の今後の課題としては，文間の荷重をかけるディープマルチAttentionモデルの実装，
+ひとつの記事から複数の要約文を生成する手法の考案などが挙げられる．
+
+現在，複数の要約文の生成法として以下の手法を考えている．
+
+\begin{itemize}
+
+\item 記事を単純に3分割し，それぞれの分割した複数文章を異なる3つのモデルを用いて学習させ，
+それぞれのモデルから3つの要約文を生成する手法
+
+\item 抽出型要約(LexRank法など)で代表文を3文取り出して，その3文から生成型要約を利用して
+要約文を生成する，抽出型要約と生成型要約を組み合わせた手法
+
+\end{itemize}
+
+\bibliographystyle{junsrt}
+\bibliography{index}
+\end{document}
